@@ -15,7 +15,7 @@ class MockHttpClient extends Mock implements http.Client {}
 
 void main() {
   tearDown(() {
-    clearCache();
+    fontsAttemptedToLoad.clear();
   });
 
   //////////////////////////////

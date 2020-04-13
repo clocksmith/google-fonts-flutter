@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:convert';
+import 'dart:convert' as convert;
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -19,18 +19,17 @@ import '../google_fonts.dart';
 import 'google_fonts_descriptor.dart';
 import 'google_fonts_variant.dart';
 
-// Keep track of the loaded fonts in FontLoader for the life of the app
-// instance.
-final Set<String> _loadedFonts = {};
+// Keep track of the fonts that are attempted to be loaded fonts in FontLoader
+// for the life of the app instance. Once a font is attempted to load, it does
+// not need to be attempted to load again.
+@visibleForTesting
+final Set<String> fontsAttemptedToLoad = {};
 
 @visibleForTesting
 bool isWeb = kIsWeb;
 
 @visibleForTesting
 http.Client httpClient = http.Client();
-
-@visibleForTesting
-void clearCache() => _loadedFonts.clear();
 
 /// Creates a [TextStyle] that either uses the font family for the requested
 /// GoogleFont, or falls back to the pre-bundled font family.
@@ -120,24 +119,19 @@ TextStyle googleFontsTextStyle({
 Future<void> loadFontIfNecessary(GoogleFontsDescriptor descriptor) async {
   final familyWithVariantString = descriptor.familyWithVariant.toString();
   final fontName = descriptor.familyWithVariant.toApiFilenamePrefix();
-  // If this font has already been loaded, then there is no need to load it
-  // again.
-  if (_loadedFonts.contains(familyWithVariantString)) {
+  // If this font has already been attempted to be loaded, then there is no need
+  // to attempt to load it again.
+  if (fontsAttemptedToLoad.contains(familyWithVariantString)) {
     return;
+  } else {
+    fontsAttemptedToLoad.add(familyWithVariantString);
   }
 
   try {
     Future<ByteData> byteData;
 
     // Check if this font can be loaded by the pre-bundled assets.
-    final assetManifestJson = await _loadAssetManifestJson();
-    final assetPath = _findFamilyWithVariantAssetPath(
-      descriptor.familyWithVariant,
-      assetManifestJson,
-    );
-    if (assetPath != null) {
-      byteData = rootBundle.load(assetPath);
-    }
+    byteData = _fetchFontByteDataFromAssetManifest(descriptor.familyWithVariant);
     if (await byteData != null) {
       return _loadFontByteData(familyWithVariantString, byteData);
     }
@@ -177,7 +171,6 @@ Future<void> _loadFontByteData(
     String familyWithVariantString, Future<ByteData> byteData) async {
   final anyFontDataFound = byteData != null && await byteData != null;
   if (anyFontDataFound) {
-    _loadedFonts.add(familyWithVariantString);
     final fontLoader = FontLoader(familyWithVariantString);
     fontLoader.addFont(byteData);
     await fontLoader.load();
@@ -217,6 +210,7 @@ Future<ByteData> _httpFetchFontAndSaveToDevice(
   String fontName,
   GoogleFontsFile file,
 ) async {
+  print('_httpFetchFontAndSaveToDevice');
   final uri = Uri.tryParse(file.url);
   if (uri == null) {
     throw Exception('Invalid fontUrl: ${file.url}');
@@ -290,16 +284,6 @@ int _computeMatch(GoogleFontsVariant a, GoogleFontsVariant b) {
   return score;
 }
 
-Future<Map<String, dynamic>> _loadAssetManifestJson() async {
-  try {
-    final jsonString = await rootBundle.loadString('AssetManifest.json');
-    return json.decode(jsonString) as Map<String, dynamic>;
-  } catch (e) {
-    rootBundle.evict('AssetManifest.json');
-    return null;
-  }
-}
-
 /// Looks for a matching [familyWithVariant] font, provided the asset manifest.
 /// Returns the path of the font asset if found, otherwise an empty string.
 String _findFamilyWithVariantAssetPath(
@@ -341,4 +325,48 @@ bool _isFileSecure(
   final actualFileHash = sha256.convert(bytes).toString();
   return file.expectedLength == actualFileLength &&
       file.expectedFileHash == actualFileHash;
+}
+
+class _AssetManifestLoader {
+  static final _AssetManifestLoader _singleton =
+      _AssetManifestLoader._internal();
+
+  factory _AssetManifestLoader() {
+    return _singleton;
+  }
+
+  _AssetManifestLoader._internal();
+
+  Future<Map<String, dynamic>> _json;
+
+  Future<Map<String, dynamic>> get json {
+    if (_json == null) {
+      _json = _loadAssetManifestJson();
+    }
+    return _json;
+  }
+
+  Future<Map<String, dynamic>> _loadAssetManifestJson() async {
+    print('_loadAssetManifestJson');
+    try {
+      final jsonString = await rootBundle.loadString('AssetManifest.json');
+      return convert.json.decode(jsonString) as Map<String, dynamic>;
+    } catch (e) {
+      rootBundle.evict('AssetManifest.json');
+      return null;
+    }
+  }
+}
+
+Future<ByteData> _fetchFontByteDataFromAssetManifest(
+    GoogleFontsFamilyWithVariant familyWithVariant) async {
+  final assetManifestJson = await _AssetManifestLoader().json;
+  final assetPath = _findFamilyWithVariantAssetPath(
+    familyWithVariant,
+    assetManifestJson,
+  );
+  if (assetPath != null) {
+    return rootBundle.load(assetPath);
+  }
+  return null;
 }

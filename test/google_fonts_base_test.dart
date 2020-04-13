@@ -59,10 +59,10 @@ void main() {
 
   tearDown(() {
     printLog.clear();
-    clearCache();
+    fontsAttemptedToLoad.clear();
   });
 
-  testWidgets('loadFontIfNecessary method calls http get', (tester) async {
+  testWidgets('loadFontIfNecessary calls http get', (tester) async {
     final fakeDescriptor = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
           family: 'Foo',
@@ -78,7 +78,7 @@ void main() {
     verify(httpClient.get(anything)).called(1);
   });
 
-  testWidgets('loadFontIfNecessary method throws if font cannot be loaded',
+  testWidgets('loadFontIfNecessary throws if font cannot be loaded',
       (tester) async {
     // Mock a bad response.
     when(httpClient.get(any)).thenAnswer((_) async {
@@ -107,7 +107,8 @@ void main() {
     });
   });
 
-  testWidgets('does not call http if config is false', (tester) async {
+  testWidgets('loadFontIfNecessary does not call http if config is false',
+      (tester) async {
     final fakeDescriptor = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
         family: 'Foo',
@@ -141,8 +142,8 @@ void main() {
   });
 
   testWidgets(
-      'loadFontIfNecessary method does not make http get request on '
-      'subsequent calls', (tester) async {
+      'loadFontIfNecessary does not make http get request on subsequent calls',
+      (tester) async {
     final fakeDescriptor = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
         family: 'Foo',
@@ -167,7 +168,35 @@ void main() {
     verifyNever(httpClient.get(anything));
   });
 
-  testWidgets('loadFontIfNecessary method writes font file', (tester) async {
+  testWidgets(
+      'loadFontIfNecessary does not make more than 1 http get request on '
+      'parallel calls', (tester) async {
+    final fakeDescriptor = GoogleFontsDescriptor(
+      familyWithVariant: GoogleFontsFamilyWithVariant(
+        family: 'Foo',
+        googleFontsVariant: GoogleFontsVariant(
+          fontWeight: FontWeight.w400,
+          fontStyle: FontStyle.normal,
+        ),
+      ),
+      file: _fakeResponseFile,
+    );
+
+    // 1st call.
+    await loadFontIfNecessary(fakeDescriptor);
+    verify(httpClient.get(anything)).called(1);
+
+    // 2nd call.
+    await loadFontIfNecessary(fakeDescriptor);
+    verifyNever(httpClient.get(anything));
+
+    // 3rd call.
+    await loadFontIfNecessary(fakeDescriptor);
+    verifyNever(httpClient.get(anything));
+  });
+
+  testWidgets('loadFontIfNecessary writes font file to local file system',
+      (tester) async {
     final fakeDescriptor = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
           family: 'Foo',
@@ -191,8 +220,9 @@ void main() {
     );
   });
 
-  testWidgets('loadFontIfNecessary method doesn\'t write font file on web',
-      (tester) async {
+  testWidgets(
+      'loadFontIfNecessary doesn\'t write font file to local file system on'
+      'web', (tester) async {
     isWeb = true;
     final fakeDescriptor = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
@@ -214,8 +244,8 @@ void main() {
   });
 
   testWidgets(
-      'loadFontIfNecessary does not save anything to disk if the file does not '
-      'match the expected hash', (tester) async {
+      'loadFontIfNecessary does not save anything to the local file system if '
+      'the file does not match the expected hash', (tester) async {
     when(httpClient.get(any)).thenAnswer((_) async {
       return http.Response('malicious intercepted response', 200);
     });

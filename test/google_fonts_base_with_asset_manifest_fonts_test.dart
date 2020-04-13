@@ -60,8 +60,8 @@ void main() {
   });
 
   testWidgets(
-      'loadFontIfNecessary method does nothing if the font is in the '
-      'Asset Manifest', (tester) async {
+      'loadFontIfNecessary does nothing if the font is in the Asset Manifest',
+      (tester) async {
     final descriptorInAssets = GoogleFontsDescriptor(
       familyWithVariant: GoogleFontsFamilyWithVariant(
         family: 'Foo',
