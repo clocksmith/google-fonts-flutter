@@ -6,6 +6,7 @@ import 'dart:convert' as convert;
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,6 +31,9 @@ bool isWeb = kIsWeb;
 
 @visibleForTesting
 http.Client httpClient = http.Client();
+
+@visibleForTesting
+FontLoader Function(String) fontLoaderProvider = (family) => FontLoader(family);
 
 /// Creates a [TextStyle] that either uses the font family for the requested
 /// GoogleFont, or falls back to the pre-bundled font family.
@@ -169,9 +173,10 @@ Future<void> loadFontIfNecessary(GoogleFontsDescriptor descriptor) async {
 /// Loads a font with [FontLoader], given its name and byte-representation.
 Future<void> _loadFontByteData(
     String familyWithVariantString, Future<ByteData> byteData) async {
+  print('_loadFontByteData');
   final anyFontDataFound = byteData != null && await byteData != null;
   if (anyFontDataFound) {
-    final fontLoader = FontLoader(familyWithVariantString);
+    final fontLoader = fontLoaderProvider(familyWithVariantString);
     fontLoader.addFont(byteData);
     await fontLoader.load();
     // TODO: Remove this once it is done automatically after loading a font.
@@ -255,6 +260,7 @@ Future<File> _saveFontToDeviceFileSystem(String name, List<int> bytes) async {
 }
 
 Future<ByteData> _loadFontFromDeviceFileSystem(String name) async {
+  print('_loadFontFromDeviceFileSystem');
   try {
     final file = await _localFile(name);
     final fileExists = file.existsSync();
@@ -328,25 +334,20 @@ bool _isFileSecure(
 }
 
 class _AssetManifestLoader {
-  static final _AssetManifestLoader _singleton =
-      _AssetManifestLoader._internal();
+  static Map<String, dynamic> _json;
+  static final _jsonAsyncMemoizer = AsyncMemoizer<Map<String, dynamic>>();
 
-  factory _AssetManifestLoader() {
-    return _singleton;
-  }
-
-  _AssetManifestLoader._internal();
-
-  Future<Map<String, dynamic>> _json;
-
-  Future<Map<String, dynamic>> get json {
+  static Future<Map<String, dynamic>> get json async {
     if (_json == null) {
-      _json = _loadAssetManifestJson();
+      _json = await _jsonAsyncMemoizer.runOnce(() async {
+        return await _loadAssetManifestJson();
+      });
     }
+
     return _json;
   }
 
-  Future<Map<String, dynamic>> _loadAssetManifestJson() async {
+  static Future<Map<String, dynamic>> _loadAssetManifestJson() async {
     print('_loadAssetManifestJson');
     try {
       final jsonString = await rootBundle.loadString('AssetManifest.json');
@@ -360,7 +361,9 @@ class _AssetManifestLoader {
 
 Future<ByteData> _fetchFontByteDataFromAssetManifest(
     GoogleFontsFamilyWithVariant familyWithVariant) async {
-  final assetManifestJson = await _AssetManifestLoader().json;
+  print('_fetchFontByteDataFromAssetManifest');
+  final assetManifestJson = await _AssetManifestLoader.json;
+  print('_AssetManifestLoader().json');
   final assetPath = _findFamilyWithVariantAssetPath(
     familyWithVariant,
     assetManifestJson,
