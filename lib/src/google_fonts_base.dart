@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:convert';
+import 'dart:convert' as convert;
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +17,7 @@ import 'package:crypto/crypto.dart';
 import 'package:pedantic/pedantic.dart';
 
 import '../google_fonts.dart';
+import 'asset_manifest.dart';
 import 'google_fonts_descriptor.dart';
 import 'google_fonts_variant.dart';
 
@@ -135,7 +137,7 @@ Future<void> loadFontIfNecessary(GoogleFontsDescriptor descriptor) async {
     Future<ByteData> byteData;
 
     // Check if this font can be loaded by the pre-bundled assets.
-    final assetManifestJson = await _loadAssetManifestJson();
+    final assetManifestJson = await AssetManifest.json();
     final assetPath = _findFamilyWithVariantAssetPath(
       descriptor.familyWithVariant,
       assetManifestJson,
@@ -293,16 +295,6 @@ int _computeMatch(GoogleFontsVariant a, GoogleFontsVariant b) {
     score += 2;
   }
   return score;
-}
-
-Future<Map<String, dynamic>> _loadAssetManifestJson() async {
-  try {
-    final jsonString = await rootBundle.loadString('AssetManifest.json');
-    return json.decode(jsonString) as Map<String, dynamic>;
-  } catch (e) {
-    rootBundle.evict('AssetManifest.json');
-    return null;
-  }
 }
 
 /// Looks for a matching [familyWithVariant] font, provided the asset manifest.
